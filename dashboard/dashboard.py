@@ -1,11 +1,20 @@
+import os
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+
 # Load data
-df_day = pd.read_csv("day.csv")
-df_hour = pd.read_csv("hour.csv")
+# df_day = pd.read_csv("day.csv")
+# df_hour = pd.read_csv("hour.csv")
+
+base_path = os.path.dirname(__file__)  # Ambil direktori dari script ini
+file_path = os.path.join(base_path, "day.csv")  # Sesuaikan dengan lokasi file
+df_day = pd.read_csv(file_path)
+
+file_path = os.path.join(base_path, "hour.csv")  # Sesuaikan dengan lokasi file
+df_hour = pd.read_csv(file_path)
 
 # Konversi kategori
 season_mapping = {1: 'Spring', 2: 'Summer', 3: 'Fall', 4: 'Winter'}

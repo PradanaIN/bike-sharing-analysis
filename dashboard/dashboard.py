@@ -1,74 +1,120 @@
-import os
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+# Load dataset
+df_day = pd.read_csv("day.csv")
+df_hour = pd.read_csv("hour.csv")
 
-# Load data
-# df_day = pd.read_csv("day.csv")
-# df_hour = pd.read_csv("hour.csv")
+# Konversi tanggal ke format datetime
+df_day["dteday"] = pd.to_datetime(df_day["dteday"])
 
-base_path = os.path.dirname(__file__)  # Ambil direktori dari script ini
-file_path = os.path.join(base_path, "day.csv")  # Sesuaikan dengan lokasi file
-df_day = pd.read_csv(file_path)
+# Mapping musim dan cuaca
+musim_map = {1: "Musim Semi", 2: "Musim Panas", 3: "Musim Gugur", 4: "Musim Dingin"}
+df_day["season"] = df_day["season"].map(musim_map)
 
-file_path = os.path.join(base_path, "hour.csv")  # Sesuaikan dengan lokasi file
-df_hour = pd.read_csv(file_path)
+cuaca_map = {1: "Cerah", 2: "Berawan", 3: "Hujan Ringan/Salju", 4: "Hujan Lebat/Salju"}
+df_day["weathersit"] = df_day["weathersit"].map(cuaca_map)
 
-# Konversi kategori
-season_mapping = {1: 'Spring', 2: 'Summer', 3: 'Fall', 4: 'Winter'}
-df_day['season'] = df_day['season'].map(season_mapping)
+# Sidebar untuk navigasi
+st.sidebar.title("📊 Dashboard Bike Sharing")
+menu = st.sidebar.radio("Navigasi", ["🏠 Home", "📊 Analisis & Visualisasi", "📌 Kesimpulan"])
 
-def main():
-    st.title("Dashboard Analisis Peminjaman Sepeda")
-    st.sidebar.title("Navigasi")
-    menu = st.sidebar.radio("Pilih Analisis:", [
-        "Distribusi Peminjaman", "Tren Peminjaman", "Pengaruh Musim & Cuaca",
-        "Peminjaman pada Hari Kerja vs Akhir Pekan", "Pola Peminjaman per Jam", "Clustering Kategori Permintaan"])
+# Filter data interaktif
+st.sidebar.header("🔎 Filter Data")
+
+# Rentang tanggal
+start_date, end_date = st.sidebar.date_input(
+    "Pilih Rentang Tanggal", 
+    [df_day["dteday"].min().date(), df_day["dteday"].max().date()]
+)
+df_filtered = df_day[
+    (df_day["dteday"] >= pd.to_datetime(start_date)) & 
+    (df_day["dteday"] <= pd.to_datetime(end_date))
+]
+
+# Filter musim
+selected_season = st.sidebar.selectbox("Pilih Musim", ["Semua"] + list(df_day["season"].unique()))
+if selected_season != "Semua":
+    df_filtered = df_filtered[df_filtered["season"] == selected_season]
+
+# Filter kondisi cuaca
+selected_weather = st.sidebar.selectbox("Pilih Kondisi Cuaca", ["Semua"] + list(df_day["weathersit"].unique()))
+if selected_weather != "Semua":
+    df_filtered = df_filtered[df_filtered["weathersit"] == selected_weather]
+
+# === HALAMAN HOME ===
+if menu == "🏠 Home":
+    st.title("🚲 Bike Sharing Dashboard")
+    st.write("Selamat datang di dashboard interaktif Bike Sharing! Gunakan menu di sidebar untuk menjelajahi data peminjaman sepeda.")
+
+    st.subheader("🔹 Data Awal")
+    st.dataframe(df_filtered.head())
+
+    st.subheader("📊 Statistik Singkat")
+    col1, col2, col3 = st.columns(3)
+    if not df_filtered.empty:
+        max_day = str(df_filtered.loc[df_filtered["cnt"].idxmax(), "dteday"].date())
+        total_rental = df_filtered["cnt"].sum()
+        avg_rental = df_filtered["cnt"].mean()
+    else:
+        max_day = "Tidak ada data"
+        total_rental = 0
+        avg_rental = 0
+
+    col1.metric("Total Peminjaman", total_rental)
+    col2.metric("Rata-rata Peminjaman", avg_rental)
+    col3.metric("Hari dengan Peminjaman Tertinggi", max_day)
+
+# === HALAMAN ANALISIS & VISUALISASI ===
+elif menu == "📊 Analisis & Visualisasi":
+    st.title("📊 Analisis dan Visualisasi Data Bike Sharing")
     
-    if menu == "Distribusi Peminjaman":
-        st.subheader("Distribusi Jumlah Peminjaman Sepeda")
-        fig, ax = plt.subplots()
-        sns.histplot(df_day['cnt'], bins=30, kde=True, ax=ax)
-        st.pyplot(fig)
-        st.write("Jumlah peminjaman sepeda memiliki distribusi miring ke kanan, menunjukkan ada beberapa hari dengan jumlah peminjaman sangat tinggi.")
+    st.subheader("1️⃣ Distribusi Jumlah Peminjaman")
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.histplot(df_filtered["cnt"], bins=30, kde=True, color="blue", ax=ax)
+    plt.xlabel("Jumlah Peminjaman")
+    plt.ylabel("Frekuensi")
+    plt.title("Distribusi Peminjaman Sepeda")
+    st.pyplot(fig)
+    st.write("📌 Mayoritas peminjaman sepeda berkisar antara **500 hingga 5000 per hari**.")
     
-    elif menu == "Tren Peminjaman":
-        st.subheader("Tren Peminjaman Sepeda Berdasarkan Bulan")
-        fig, ax = plt.subplots()
-        sns.lineplot(x='mnth', y='cnt', data=df_day, estimator='mean', marker='o', color='green', ax=ax)
-        st.pyplot(fig)
-        st.write("Tren peminjaman meningkat dari awal tahun, mencapai puncaknya di musim panas, dan menurun saat musim dingin.")
+    st.subheader("2️⃣ Tren Peminjaman Berdasarkan Musim & Bulan")
+    df_season = df_filtered.groupby(["season"])["cnt"].mean().reset_index()
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.barplot(data=df_season, x="season", y="cnt", palette="coolwarm", ax=ax)
+    plt.xlabel("Musim")
+    plt.ylabel("Rata-rata Peminjaman")
+    plt.title("Tren Peminjaman Sepeda Berdasarkan Musim")
+    st.pyplot(fig)
+    st.write("📌 **Musim panas** memiliki peminjaman tertinggi, sementara **musim dingin** memiliki peminjaman terendah.")
     
-    elif menu == "Pengaruh Musim & Cuaca":
-        st.subheader("Pengaruh Musim dan Cuaca terhadap Peminjaman")
-        fig, ax = plt.subplots()
-        sns.boxplot(x=df_day['season'], y=df_day['cnt'], ax=ax)
-        st.pyplot(fig)
-        st.write("Musim panas dan gugur memiliki jumlah peminjaman tertinggi, sedangkan musim dingin menunjukkan peminjaman terendah.")
-    
-    elif menu == "Peminjaman pada Hari Kerja vs Akhir Pekan":
-        st.subheader("Perbandingan Peminjaman antara Hari Kerja dan Akhir Pekan")
-        fig, ax = plt.subplots()
-        sns.barplot(x=df_day['workingday'], y=df_day['cnt'], ax=ax)
-        st.pyplot(fig)
-        st.write("Peminjaman lebih tinggi pada hari kerja, menunjukkan banyak pengguna memanfaatkan sepeda untuk keperluan transportasi.")
-    
-    elif menu == "Pola Peminjaman per Jam":
-        st.subheader("Pola Peminjaman Berdasarkan Jam")
-        fig, ax = plt.subplots()
-        sns.lineplot(x='hr', y='cnt', data=df_hour, estimator='mean', marker='o', color='red', ax=ax)
-        st.pyplot(fig)
-        st.write("Peminjaman sepeda memuncak di pagi dan sore hari, sejalan dengan jam kerja dan perjalanan pulang pergi kantor.")
-    
-    elif menu == "Clustering Kategori Permintaan":
-        st.subheader("Kategori Permintaan Peminjaman Sepeda")
-        df_day['demand_category'] = pd.cut(df_day['cnt'], bins=[0, 2000, 4000, df_day['cnt'].max()], labels=['Low Demand', 'Medium Demand', 'High Demand'])
-        fig, ax = plt.subplots()
-        sns.countplot(x=df_day['demand_category'], order=['Low Demand', 'Medium Demand', 'High Demand'], ax=ax)
-        st.pyplot(fig)
-        st.write("Sebagian besar hari memiliki permintaan sepeda dalam kategori Medium Demand, sedangkan High Demand terjadi lebih jarang.")
-    
-if __name__ == "__main__":
-    main()
+    st.subheader("3️⃣ Pola Peminjaman Berdasarkan Cuaca")
+    df_weather = df_filtered.groupby(["weathersit"])["cnt"].mean().reset_index()
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.barplot(data=df_weather, x="weathersit", y="cnt", palette="viridis", ax=ax)
+    plt.xlabel("Kondisi Cuaca")
+    plt.ylabel("Rata-rata Peminjaman")
+    plt.title("Peminjaman Sepeda Berdasarkan Cuaca")
+    st.pyplot(fig)
+    st.write("📌 Peminjaman sepeda lebih banyak saat **cuaca cerah**, dan menurun saat hujan atau salju.")
+
+    st.subheader("4️⃣ Pola Peminjaman Berdasarkan Jam")
+    df_hour_grouped = df_hour.groupby("hr")["cnt"].mean().reset_index()
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.lineplot(data=df_hour_grouped, x="hr", y="cnt", marker="o", ax=ax)
+    plt.xlabel("Jam")
+    plt.ylabel("Rata-rata Peminjaman")
+    plt.title("Pola Peminjaman Sepeda Berdasarkan Jam")
+    st.pyplot(fig)
+    st.write("📌 **Puncak peminjaman terjadi pada pagi (07:00 - 09:00) dan sore (17:00 - 19:00).**")
+
+# === HALAMAN KESIMPULAN ===
+elif menu == "📌 Kesimpulan":
+    st.title("📌 Kesimpulan")
+    st.write("- **Peminjaman lebih tinggi saat cuaca cerah dan musim panas.**")
+    st.write("- **Hari kerja memiliki peminjaman lebih tinggi dibanding akhir pekan.**")
+    st.write("- **Jam sibuk terjadi pada pagi dan sore hari.**")
+    st.title("📌 Rekomendasi")
+    st.write("📌 Tambahkan sepeda pada jam sibuk dan perbaiki layanan di musim dingin.")
